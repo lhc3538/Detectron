@@ -77,6 +77,13 @@ def parse_args():
         type=str
     )
     parser.add_argument(
+        '--output-csv',
+        dest='output_csv',
+        help='path for results (default: /tmp/results.csv)',
+        default='/tmp/results.csv',
+        type=str
+    )
+    parser.add_argument(
         '--image-ext',
         dest='image_ext',
         help='image file name extension (default: jpg)',
@@ -119,13 +126,15 @@ def main(args):
         'Models that require precomputed proposals are not supported'
 
     model = infer_engine.initialize_model_from_cfg(args.weights)
-    dummy_coco_dataset = dummy_datasets.get_coco_dataset()
+    dummy_helmet_dataset = dummy_datasets.get_helmet_dataset()
 
     if os.path.isdir(args.im_or_folder):
         im_list = glob.iglob(args.im_or_folder + '/*.' + args.image_ext)
     else:
         im_list = [args.im_or_folder]
 
+    img_id = 1
+    imgs_boxes = {}
     for i, im_name in enumerate(im_list):
         out_name = os.path.join(
             args.output_dir, '{}'.format(os.path.basename(im_name) + '.' + args.output_ext)
@@ -147,14 +156,14 @@ def main(args):
                 'rest (caches and auto-tuning need to warm up)'
             )
 
-        vis_utils.vis_one_image(
+        boxes = vis_utils.vis_one_image_boxes(
             im[:, :, ::-1],  # BGR -> RGB for visualization
             im_name,
             args.output_dir,
             cls_boxes,
             cls_segms,
             cls_keyps,
-            dataset=dummy_coco_dataset,
+            dataset=dummy_helmet_dataset,
             box_alpha=0.3,
             show_class=True,
             thresh=0.7,
@@ -162,7 +171,19 @@ def main(args):
             ext=args.output_ext,
             out_when_no_box=args.out_when_no_box
         )
+        imgs_boxes.setdefault(im_name, []).append(boxes)
+        print("prcess img id : %d" % img_id)
+        img_id += 1
 
+    # save results to csv
+    file_out_csv = open(args.output_csv, 'w')
+    for im_name in imgs_boxes:
+        boxes = imgs_boxes[im_name]
+        for box in boxes:
+            line = im_name + ',' + str(box[0]) + ' ' + str(box[1]) + ' ' \
+                   + str(box[2]) + ' ' + str(box[3]) + '\n'
+            file_out_csv.write(line)
+    file_out_csv.close()
 
 if __name__ == '__main__':
     workspace.GlobalInit(['caffe2', '--caffe2_log_level=0'])
